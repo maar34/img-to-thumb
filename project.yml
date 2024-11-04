@@ -1,5 +1,11 @@
+environment:
+  DO_ACCESS_KEY: ${DO_ACCESS_KEY}
+  DO_SECRET_KEY: ${DO_SECRET_KEY}
+  DO_SPACES_REGION: ${DO_SPACES_REGION}
+  DO_SPACES_BUCKET: ${DO_SPACES_BUCKET}
+
 packages:
-  - name: joke
+  - name: pcm-to-mp3
     actions:
-      - name: joke
+      - name: pcm-to-mp3
         runtime: 'python:default'

@@ -5,9 +5,9 @@ functions:
 - github:
     branch: master
     deploy_on_push: true
-    repo: digitalocean/sample-functions-python-jokes
-  name: jokes-api
+    repo: maar34/pcm-to-mp3
+  name: audio-api
   routes:
   - path: /
   source_dir: /
-name: jokes
+name: pcm-to-mp3

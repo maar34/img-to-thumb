@@ -1,0 +1,3 @@
+boto3==1.26.60
+audioread==2.1.9
+lameenc==1.7.0

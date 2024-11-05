@@ -3,11 +3,11 @@ alerts:
 - rule: DOMAIN_FAILED
 functions:
 - github:
-    branch: master
+    branch: main
     deploy_on_push: true
-    repo: maar34/pcm-to-mp3
+    repo: maar34/img-to-thumb
   name: audio-api
   routes:
   - path: /
   source_dir: /
-name: pcm-to-mp3
+name: img-to-thumb

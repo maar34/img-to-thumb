@@ -5,7 +5,7 @@ environment:
   DO_SPACES_BUCKET: ${DO_SPACES_BUCKET}
 
 packages:
-  - name: pcm-to-mp3
+  - name: img-to-thumb
     actions:
-      - name: pcm-to-mp3
+      - name: img-to-thumb
         runtime: 'python:default'

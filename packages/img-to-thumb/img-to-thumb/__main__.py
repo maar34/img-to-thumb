@@ -13,61 +13,108 @@ s3 = boto3.client(
 )
 
 def main(event, context):
-    # Get track ID and cover image key from the request
-    track_id = event.get('trackId')
+    entity_id = event.get('entityId')
+    entity_type = event.get('entityType')
     cover_image_key = event.get('coverImageKey')
     
-    if not track_id or not cover_image_key:
-        return {"statusCode": 400, "body": "trackId and coverImageKey are required"}
+    if not entity_id or not cover_image_key or not entity_type:
+        return {"statusCode": 400, "body": "entityId, entityType, and coverImageKey are required"}
     
-    # Set paths and file keys
+    entity_api_endpoints = {
+        'orbiter': 'orbiters',
+        'interplanetaryPlayer': 'interplanetaryplayers',
+        'track': 'tracks',
+        'user': 'users',
+        'collection': 'collections'
+    }
+    
+    if entity_type not in entity_api_endpoints:
+        return {
+            "statusCode": 400,
+            "body": f"Invalid entityType. Must be one of {list(entity_api_endpoints.keys())}."
+        }
+    
     bucket_name = os.getenv('DO_SPACES_BUCKET')
-    thumbnail_key = f"thumbnails/{os.path.splitext(cover_image_key)[0]}_thumbnail.webp"
+    cover_image_dir = os.path.dirname(cover_image_key)
+    original_filename = os.path.basename(cover_image_key)
+    name_without_ext, _ = os.path.splitext(original_filename)
+    
+    thumbnail_filenames = {
+        'small': f"{name_without_ext}_thumbnail_small.webp",
+        'mid': f"{name_without_ext}_thumbnail_mid.webp"
+    }
+    
+    thumbnail_keys = {
+        size: f"{cover_image_dir}/{filename}"
+        for size, filename in thumbnail_filenames.items()
+    }
     
     try:
-        # Download image file to a temporary location
         with tempfile.NamedTemporaryFile(delete=False) as image_file:
             s3.download_fileobj(bucket_name, cover_image_key, image_file)
             image_path = image_file.name
 
-        # Open image and create thumbnail
         with Image.open(image_path) as img:
-            # Ensure the image is in RGB mode
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            # Resize image to 150x150 pixels
-            img.thumbnail((150, 150), Image.ANTIALIAS)
             
-            # Save as WEBP format
-            thumbnail_path = tempfile.mktemp(suffix=".webp")
-            img.save(thumbnail_path, 'WEBP', quality=80)
-
-        # Upload thumbnail image back to DigitalOcean Spaces
-        with open(thumbnail_path, "rb") as thumbnail_data:
-            s3.upload_fileobj(
-                thumbnail_data,
-                bucket_name,
-                thumbnail_key,
-                ExtraArgs={"ContentType": "image/webp", "ACL": "public-read"}
-            )
+            sizes = {
+                'small': (150, 150),
+                'mid': (1024, 1024)
+            }
+            
+            for size_label, dimensions in sizes.items():
+                img_copy = img.copy()
+                img_copy.thumbnail(dimensions)
+                
+                thumbnail_path = tempfile.mktemp(suffix=".webp")
+                img_copy.save(thumbnail_path, 'WEBP', quality=80)
+                
+                with open(thumbnail_path, "rb") as thumbnail_data:
+                    try:
+                        s3.upload_fileobj(
+                            thumbnail_data,
+                            bucket_name,
+                            thumbnail_keys[size_label],
+                            ExtraArgs={"ContentType": "image/webp", "ACL": "public-read"}
+                        )
+                        print(f"Thumbnail '{thumbnail_keys[size_label]}' uploaded successfully.")
+                    except Exception as upload_error:
+                        print(f"Error uploading thumbnail '{thumbnail_keys[size_label]}': {upload_error}")
+                        raise upload_error
+                
+                os.remove(thumbnail_path)
         
-        # Cleanup temp files
         os.remove(image_path)
-        os.remove(thumbnail_path)
         
-        # POST the thumbnail key to config-proxy
-        post_url = "http://media.maar.world:3001/api/tracks/update-thumbnail"
-        response = requests.put(post_url, json={"trackId": track_id, "thumbnailKey": thumbnail_key})
+        base_url = "http://media.maar.world:3001"
+        api_endpoint = entity_api_endpoints[entity_type]
+        post_url = f"{base_url}/api/{api_endpoint}/update-thumbnail"
+        
+        payload = {
+            f"{entity_type}Id": entity_id,
+            "thumbnailKeySmall": thumbnail_keys['small'],
+            "thumbnailKeyMid": thumbnail_keys['mid']
+        }
+        
+        response = requests.put(post_url, json=payload)
         
         if response.status_code == 200:
-            return {"statusCode": 200, "body": {"message": "Thumbnail creation successful", "thumbnailKey": thumbnail_key}}
+            return {
+                "statusCode": 200,
+                "body": {
+                    "message": "Thumbnail creation successful",
+                    "thumbnailKeySmall": thumbnail_keys['small'],
+                    "thumbnailKeyMid": thumbnail_keys['mid']
+                }
+            }
         else:
-            raise Exception(f"Failed to notify config-proxy. Status: {response.status_code}, Response: {response.text}")
+            return {
+                "statusCode": response.status_code,
+                "body": f"Failed to notify API. Status: {response.status_code}, Response: {response.text}"
+            }
         
     except Exception as e:
-        # Ensure cleanup on failure
         if 'image_path' in locals() and os.path.exists(image_path):
             os.remove(image_path)
-        if 'thumbnail_path' in locals() and os.path.exists(thumbnail_path):
-            os.remove(thumbnail_path)
         return {"statusCode": 500, "body": str(e)}

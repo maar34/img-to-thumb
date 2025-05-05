@@ -6,7 +6,7 @@ functions:
     branch: main
     deploy_on_push: true
     repo: maar34/img-to-thumb
-  name: audio-api
+  name: img-to-thumb-function
   routes:
   - path: /
   source_dir: /
